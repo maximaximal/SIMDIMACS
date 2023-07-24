@@ -1,17 +1,34 @@
+#include <stdbool.h>
 #include <stddef.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "simdimacs.h"
 
-void simdimacs_add(void* userdata, int lit) {
+void
+simdimacs_add(void* userdata, int lit) {
   (void)userdata;
-  printf(" %d", lit);
-  if(lit == 0)
+  static bool first = true;
+  if(first) {
+    printf("%d", lit);
+    first = false;
+  } else {
+    printf(" %d", lit);
+  }
+  if(lit == 0) {
     printf("\n");
+    first = true;
+  }
 }
 
-int main(int argc, char* argv[]) {
+void
+simdimacs_problem(void* userdata, int vars, int clauses) {
+  (void)userdata;
+  printf("p cnf %d %d\n", vars, clauses);
+}
+
+int
+main(int argc, char* argv[]) {
   if(argc != 2) {
     fprintf(stderr, "Error: Provide file to read!\n");
     return EXIT_FAILURE;
