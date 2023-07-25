@@ -1,12 +1,13 @@
-#include <stdio.h>
-
-#include "simdimacs-internal.h"
-#include "simdimacs.h"
-
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "simdimacs-internal.h"
+#include "simdimacs.h"
 
 #include <emmintrin.h>
 #include <immintrin.h>
@@ -232,7 +233,7 @@ mul10_add_digit(uint32_t* number, char c) {
   // number * 10 + 9 <= MAX  <=>  number <= (MAX - 9)/10
   if(*number < (INT_MAX - 9) / 10) {
     // no overflow is possible, use the faster path
-    *number = 10 * *number + c - '0';
+    *number = 10 * (*number) + c - '0';
   } else {
     // check for overflow
     if(__builtin_umul_overflow(*number, 10, number)) {
@@ -327,11 +328,7 @@ parse_signed(void* userdata,
 
     data += bi->first_skip;
 
-    if(*data == '+') {
-      data++;
-      negative = false;
-      result = 0;
-    } else if(*data == '-') {
+    if(*data == '-') {
       data++;
       negative = true;
       result = 0;
@@ -403,7 +400,6 @@ process_chunk(void* userdata, const char* data, const char* end, char** error) {
 
   simdimacs_blockinfo* bi = &simdimacs_blocks[span_mask];
   if(sign_mask & bi->invalid_sign_mask) {
-    fprintf(stderr, "Block %x\n", span_mask);
     *error = "character '-' at invalid position!";
     return NULL;
   }
@@ -422,7 +418,8 @@ process_chunk(void* userdata, const char* data, const char* end, char** error) {
 static void
 sse_init() {
   separator_set_size = 2;
-  separator_set = _mm_loadu_si128((__m128i*)" \n");
+  // All the separators have to be listed, otherwise this is a buffer overflow!
+  separator_set = _mm_loadu_si128((__m128i*)" \n                          ");
 }
 
 static const char*
@@ -505,6 +502,7 @@ scalar_parse_signed(void* userdata, const char* data, size_t size) {
         number = 0;
         negative = true;
         break;
+
       case digit:
         if(prev == separator) {
           number = c - '0';
@@ -533,6 +531,7 @@ scalar_parse_signed(void* userdata, const char* data, size_t size) {
         } else if(prev != separator) {
           return "Invalid syntax ('-' or '+' not followed by any digit)";
         }
+        number = 0;
         break;
     }
 
@@ -544,7 +543,7 @@ scalar_parse_signed(void* userdata, const char* data, size_t size) {
       if(negative) {
         SIMDIMACS_ADD(userdata, -number);
       } else {
-        SIMDIMACS_ADD(userdata, -number);
+        SIMDIMACS_ADD(userdata, number);
       }
     } else if(prev != separator) {
       return "Invalid syntax ('-' or '+' not followed by any digit)";
@@ -562,15 +561,21 @@ simdimacs_parse(FILE* f, void* userdata) {
   if((err = parse_header(f, userdata)))
     return err;
 
-  const size_t buf_size = 512;
+  const size_t buf_size = 65536;
   char buf[buf_size] SSE_ALIGN;
 
   size_t len = 0;
+  size_t offset = 0;
+  size_t expected = 0;
+
+  const char* data = buf;
+  const char* end = data + len + offset;
 
   do {
-    len = fread(buf, 1, buf_size, f);
-    const char* data = buf;
-    const char* end = data + len;
+    expected = buf_size - offset;
+    len = fread(buf + offset, 1, expected, f);
+    data = buf;
+    end = data + len + offset;
 
     while(data + 16 < end) {
       char* error = NULL;
@@ -579,11 +584,18 @@ simdimacs_parse(FILE* f, void* userdata) {
         return error;
     }
 
-    // Tail processing
-    if((err = scalar_parse_signed(userdata, data, buf + len - data))) {
-      return err;
+    // The tail has to be moved to the beginning at each step, otherwise the
+    // numbers are not fully parsed.
+    if(data != end) {
+      offset = end - data;
+      memmove(buf, data, offset);
     }
-  } while(len == buf_size);
+  } while(len == expected);
+
+  // Tail processing
+  if((err = scalar_parse_signed(userdata, buf, offset))) {
+    return err;
+  }
 
   return NULL;
 }

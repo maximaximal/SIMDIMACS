@@ -44,6 +44,10 @@
 #define SIMDIMACS_PROBLEM simdimacs_problem
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /** @brief Parse the file into a CNF, using SIMDIMACS_ADD(userdata,
  *         SIMDIMACS_LIT).
  *
@@ -53,6 +57,11 @@ const char*
 simdimacs_parse(FILE*, void*);
 
 void SIMDIMACS_PROBLEM(void* userdata, int variables, int clauses);
-void SIMDIMACS_ADD(void* userdata, int lit);
+void
+SIMDIMACS_ADD(void* userdata, int lit);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // SIMDIMACS_H
