@@ -553,6 +553,44 @@ scalar_parse_signed(void* userdata, const char* data, size_t size) {
   return NULL;
 }
 
+#define BUFSIZE ((1u << 21) + 16)
+
+/* Read the next part. Also sets correct functions and copies old remaining
+   data. */
+static inline size_t
+next_read_step(char* buf,
+               FILE* f,
+               size_t step,
+               const char** data,
+               const char** end,
+               bool* eof) {
+  assert(!*eof);
+  assert(*end - *data <= 16);
+
+  char* tgt = buf + 16;
+  if(step % 2 == 0) {
+    tgt += (1u << 20);
+  }
+  const size_t expected = 1u << 20;
+  size_t len = fread(tgt, 1, expected, f);
+  if(len != expected) {
+    *eof = true;
+  } else {
+    *eof = false;
+  }
+  if(*data != *end) {
+    // There was some data left! Copy this in front of the read data. The buffer
+    // is large enough for this.
+    size_t tail_len = *end - *data;
+    memcpy(tgt - tail_len, *data, tail_len);
+    *data = tgt - tail_len;
+  } else {
+    *data = tgt;
+  }
+  *end = tgt + len;
+  return step + 1;
+}
+
 const char*
 simdimacs_parse(FILE* f, void* userdata) {
   sse_init();
@@ -561,21 +599,21 @@ simdimacs_parse(FILE* f, void* userdata) {
   if((err = parse_header(f, userdata)))
     return err;
 
-  const size_t buf_size = 65536;
-  char buf[buf_size] SSE_ALIGN;
+  /*
+    Memory Layout: Two buffer areas, one is used to actively read into, while
+    the other is read from by the DIMACS parser.
+   */
 
-  size_t len = 0;
-  size_t offset = 0;
-  size_t expected = 0;
+  char buf[BUFSIZE] SSE_ALIGN;
 
-  const char* data = buf;
-  const char* end = data + len + offset;
+  size_t step = 0;
 
-  do {
-    expected = buf_size - offset;
-    len = fread(buf + offset, 1, expected, f);
-    data = buf;
-    end = data + len + offset;
+  const char* data = NULL;
+  const char* end = NULL;
+
+  bool eof = false;
+  while(!eof) {
+    step = next_read_step(buf, f, step, &data, &end, &eof);
 
     while(data + 16 < end) {
       char* error = NULL;
@@ -583,17 +621,10 @@ simdimacs_parse(FILE* f, void* userdata) {
       if(error)
         return error;
     }
-
-    // The tail has to be moved to the beginning at each step, otherwise the
-    // numbers are not fully parsed.
-    if(data != end) {
-      offset = end - data;
-      memmove(buf, data, offset);
-    }
-  } while(len == expected);
+  }
 
   // Tail processing
-  if((err = scalar_parse_signed(userdata, buf, offset))) {
+  if((err = scalar_parse_signed(userdata, data, end - data))) {
     return err;
   }
 

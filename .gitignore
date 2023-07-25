@@ -1,2 +1,5 @@
 driver
 simdimacs-blockinfo.o
+/driver-dbg
+/simdimacs-blockinfo-dbg.o
+/simdimacs.o

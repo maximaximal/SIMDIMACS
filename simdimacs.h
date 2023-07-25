@@ -52,6 +52,9 @@ extern "C" {
  *         SIMDIMACS_LIT).
  *
  * Returns: NULL on success, error code on failure.
+ *
+ * Doesn't use the heap, but allocates 2MB on the stack for the two-part read
+ * buffer.
  */
 const char*
 simdimacs_parse(FILE*, void*);
