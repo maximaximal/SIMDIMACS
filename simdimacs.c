@@ -630,3 +630,43 @@ simdimacs_parse(FILE* f, void* userdata) {
 
   return NULL;
 }
+
+const char*
+simdimacs_parse_path(const char* path, void*) {
+  sse_init();
+
+  const char* err = NULL;
+  if((err = parse_header(f, userdata)))
+    return err;
+
+  /*
+    Memory Layout: Two buffer areas, one is used to actively read into, while
+    the other is read from by the DIMACS parser.
+   */
+
+  char buf[BUFSIZE] SSE_ALIGN;
+
+  size_t step = 0;
+
+  const char* data = NULL;
+  const char* end = NULL;
+
+  bool eof = false;
+  while(!eof) {
+    step = next_read_step(buf, f, step, &data, &end, &eof);
+
+    while(data + 16 < end) {
+      char* error = NULL;
+      data = process_chunk(userdata, data, end, &error);
+      if(error)
+        return error;
+    }
+  }
+
+  // Tail processing
+  if((err = scalar_parse_signed(userdata, data, end - data))) {
+    return err;
+  }
+
+  return NULL;
+}
