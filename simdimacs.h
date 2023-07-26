@@ -59,6 +59,21 @@ extern "C" {
 const char*
 simdimacs_parse(FILE*, void*);
 
+/** @brief Parse the file into a CNF, using SIMDIMACS_ADD(userdata,
+ *         SIMDIMACS_LIT).
+ *
+ * Returns: NULL on success, error code on failure.
+ *
+ * Doesn't use the heap, but allocates 2MB on the stack for the two-part read
+ * buffer.
+ *
+ * This function uses a more advanced asynchronous read method and does manual
+ * buffering of the reads. While 1MB data is parsed, the other MB is read into
+ * the adjacent memory.
+ */
+const char*
+simdimacs_parse_path(const char* path, void*);
+
 void SIMDIMACS_PROBLEM(void* userdata, int variables, int clauses);
 void
 SIMDIMACS_ADD(void* userdata, int lit);
