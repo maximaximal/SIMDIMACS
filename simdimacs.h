@@ -8,8 +8,8 @@
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
  *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
  *
  * THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -70,12 +70,20 @@ simdimacs_parse(FILE*, void*);
 const char*
 simdimacs_parse_path(const char* path, void*);
 
-void SIMDIMACS_PROBLEM(void* userdata, int variables, int clauses);
+void
+SIMDIMACS_PROBLEM(void* userdata, int variables, int clauses);
 void
 SIMDIMACS_ADD(void* userdata, int lit);
+
+#ifdef SIMDIMACS_STATS
+/* Parsing statistics embedded in SIMDIMACS. Enabled by defining
+ * SIMDIMACS_STATS. Print them using simdimacs_print_stats() */
+void
+simdimacs_print_stats();
+#endif
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // SIMDIMACS_H
+#endif// SIMDIMACS_H

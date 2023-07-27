@@ -11,6 +11,7 @@
 
 static bool FILE_based = false;
 static bool quiet = false;
+static bool stats = false;
 
 void
 simdimacs_add(void* userdata, int lit) {
@@ -44,6 +45,12 @@ help() {
   printf("OPTIONS:\n");
   printf("  -F\tuse FILE* based parsing (synchronous)\n");
   printf("  -q\tdon't print the same CNF as output (quiet mode)\n");
+#ifdef SIMDIMACS_STATS
+  printf("  -s\tprint statistics\n");
+#else
+  printf("  -s\tprint statistics (disabled in this build, enable using cc ... "
+         "-DSIMDIMACS_STATS)\n");
+#endif
   printf("  -h\tthis help message\n");
 }
 
@@ -58,13 +65,16 @@ timeval_to_seconds(struct timeval* t) {
 int
 main(int argc, char* argv[]) {
   int opt;
-  while((opt = getopt(argc, argv, "Fqh")) != -1) {
+  while((opt = getopt(argc, argv, "Fsqh")) != -1) {
     switch(opt) {
       case 'F':
         FILE_based = true;
         break;
       case 'q':
         quiet = true;
+        break;
+      case 's':
+        stats = true;
         break;
       case 'h':
         help();
@@ -103,6 +113,14 @@ main(int argc, char* argv[]) {
   double parse_s = end_s - start_s;
 
   fprintf(stderr, "    %s : parse-time: %f s\n", path, parse_s);
+
+  if(stats) {
+#ifdef SIMDIMACS_STATS
+    simdimacs_print_stats();
+#else
+    fprintf(stderr, "! cannot print stats (compile-time disabled)\n");
+#endif
+  }
 
   return EXIT_SUCCESS;
 }

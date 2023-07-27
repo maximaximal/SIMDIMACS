@@ -1,9 +1,9 @@
 #include <assert.h>
 #include <ctype.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdbool.h>
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +14,50 @@
 
 #include <emmintrin.h>
 #include <immintrin.h>
+
+#ifdef SIMDIMACS_STATS
+#define xstr(s) str(s)
+#define str(s) #s
+
+static size_t simdimacs_callsto_convert_1_digit = 0;
+static size_t simdimacs_callsto_convert_2_digits = 0;
+static size_t simdimacs_callsto_convert_3_digits = 0;
+static size_t simdimacs_callsto_convert_4_digits = 0;
+static size_t simdimacs_callsto_convert_8_digits = 0;
+
+static size_t simdimacs_callsto_convert_2_digits_signed = 0;
+static size_t simdimacs_callsto_convert_3_digits_signed = 0;
+static size_t simdimacs_callsto_convert_4_digits_signed = 0;
+static size_t simdimacs_callsto_convert_8_digits_signed = 0;
+
+#define P(VAL) fprintf(stderr, str(VAL) ": %lu\n", simdimacs_##VAL)
+
+void
+simdimacs_print_stats() {
+  P(callsto_convert_1_digit);
+  P(callsto_convert_2_digits);
+  P(callsto_convert_3_digits);
+  P(callsto_convert_4_digits);
+  P(callsto_convert_8_digits);
+
+  P(callsto_convert_2_digits_signed);
+  P(callsto_convert_3_digits_signed);
+  P(callsto_convert_4_digits_signed);
+  P(callsto_convert_8_digits_signed);
+}
+
+#undef P
+
+#undef xstr
+#undef str
+
+#define INCSTAT(VAL) ++simdimacs_##VAL
+
+#else
+
+#define INCSTAT(VAL)
+
+#endif
 
 #define SSE_ALIGN __attribute__((aligned(16)))
 
@@ -30,6 +74,7 @@ decimal_digits_mask(const __m128i input) {
 
 static inline void
 convert_1digit(void* userdata, const __m128i input, int count) {
+  INCSTAT(callsto_convert_1_digit);
   const __m128i ascii0 = _mm_set1_epi8('0');
 
   const __m128i t0 = _mm_subs_epu8(input, ascii0);
@@ -43,6 +88,7 @@ convert_1digit(void* userdata, const __m128i input, int count) {
 
 static inline void
 convert_2digits(void* userdata, const __m128i input, int count) {
+  INCSTAT(callsto_convert_2_digits);
   const __m128i ascii0 = _mm_set1_epi8('0');
   const __m128i mul_1_10 =
     _mm_setr_epi8(10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1);
@@ -59,6 +105,7 @@ convert_2digits(void* userdata, const __m128i input, int count) {
 
 static inline void
 convert_3digits(void* userdata, const __m128i input, int count) {
+  INCSTAT(callsto_convert_3_digits);
 
   const __m128i ascii0 = _mm_set1_epi8('0');
   const __m128i mul_all =
@@ -79,6 +126,7 @@ convert_3digits(void* userdata, const __m128i input, int count) {
 
 static inline void
 convert_4digits(void* userdata, const __m128i input, int count) {
+  INCSTAT(callsto_convert_4_digits);
 
   const __m128i ascii0 = _mm_set1_epi8('0');
   const __m128i mul_1_10 =
@@ -100,6 +148,7 @@ convert_4digits(void* userdata, const __m128i input, int count) {
 
 static inline void
 convert_8digits(void* userdata, const __m128i input, int count) {
+  INCSTAT(callsto_convert_8_digits);
 
   const __m128i ascii0 = _mm_set1_epi8('0');
   const __m128i mul_1_10 =
@@ -128,6 +177,7 @@ convert_2digits_signed(void* userdata,
                        const __m128i input,
                        const __m128i negate_mask,
                        int count) {
+  INCSTAT(callsto_convert_2_digits_signed);
   const __m128i ascii0 = _mm_set1_epi8('0');
   const __m128i mul_1_10 =
     _mm_setr_epi8(10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1);
@@ -150,6 +200,7 @@ convert_3digits_signed(void* userdata,
                        const __m128i input,
                        const __m128i negate_mask,
                        int count) {
+  INCSTAT(callsto_convert_3_digits_signed);
 
   const __m128i ascii0 = _mm_set1_epi8('0');
   const __m128i mul_all =
@@ -176,6 +227,7 @@ convert_4digits_signed(void* userdata,
                        const __m128i input,
                        const __m128i negate_mask,
                        int count) {
+  INCSTAT(callsto_convert_4_digits_signed);
 
   const __m128i ascii0 = _mm_set1_epi8('0');
   const __m128i mul_1_10 =
@@ -203,6 +255,7 @@ convert_8digits_signed(void* userdata,
                        const __m128i input,
                        const __m128i negate_mask,
                        int count) {
+  INCSTAT(callsto_convert_8_digits_signed);
 
   const __m128i ascii0 = _mm_set1_epi8('0');
   const __m128i mul_1_10 =
@@ -612,6 +665,146 @@ next_read_step(char* buf,
   return step + 1;
 }
 
+#if __has_builtin(_mm512_permutex2var_epi8)
+#define AVX512
+#endif
+
+#if AVX512
+enum lookup {
+
+  DIGIT = 0x80,
+  SIGN = 0xc0,
+  VALID = 1,
+  INVALID = 0
+};
+
+static inline const char*
+prepare_lookup(const char* separators, uint8_t result[128]) {
+  uint8_t* c = (uint8_t*)(separators);
+
+  memset(result, INVALID, 128);
+
+  for(int i = '0'; i <= '9'; i++) {
+    result[i] = DIGIT;
+  }
+
+  result['-'] = SIGN;
+  result['+'] = SIGN;
+
+  while(*c) {
+    uint8_t x = *c++;
+    if(x & 0x80) {
+      return "extended ASCII is not supported";
+    }
+
+    switch(x) {
+      case '0':
+      case '1':
+      case '2':
+      case '3':
+      case '4':
+      case '5':
+      case '6':
+      case '7':
+      case '8':
+      case '9':
+      case '+':
+      case '-':
+        return "digits and sign chars are reserved";
+    }
+
+    result[x] = VALID;
+  }
+
+  return NULL;
+}
+
+inline static const char*
+parse_matrix_chunk(void* userdata,
+                   const char** data,
+                   const char* end,
+                   uint8_t* classes_lookup,
+                   __m512i class_lo,
+                   __m512i class_hi) {
+  const __m512i input = _mm512_loadu_si512(reinterpret_cast<__m512i*>(*data));
+
+  const __m512i classes = _mm512_permutex2var_epi8(class_lo, input, class_hi);
+
+  if(_mm512_test_epi8_mask(classes, classes) != uint64_t(-1)) {
+    return "invalid character";
+  }
+
+  uint64_t span_mask64 = _mm512_movepi8_mask(classes);
+  uint64_t sign_mask64 =
+    _mm512_test_epi8_mask(classes, _mm512_set1_epi8(int8_t(0x40)));
+
+  char* bufend = data + 64;
+  while(data + 16 <= bufend) {
+    const uint16_t span_mask = span_mask64 & 0xffff;
+    const uint16_t sign_mask = sign_mask64 & 0xffff;
+
+    const simdimacs_blockinfo* bi = &blocks[span_mask];
+    if(sign_mask & bi->invalid_sign_mask) {
+      return "'+' or '-' at invalid position";
+    }
+
+    const __m128i chunk = _mm_loadu_si128(reinterpret_cast<__m128i*>(data));
+
+    const __m128i shuffle_digits =
+      _mm_loadu_si128((const __m128i*)bi->shuffle_digits);
+    const __m128i shuffle_signs =
+      _mm_loadu_si128((const __m128i*)bi->shuffle_signs);
+
+    const __m128i shuffled = _mm_shuffle_epi8(chunk, shuffle_digits);
+    const __m128i negate_mask = _mm_cmpeq_epi8(
+      _mm_shuffle_epi8(chunk, shuffle_signs), _mm_set1_epi8('-'));
+    if(bi->conversion_routine == SSE1Digit) {
+
+      sse::convert_1digit(shuffled, bi->element_count, output);
+
+    } else if(bi->conversion_routine == SSE2Digits) {
+
+      sse::convert_2digits_signed(
+        shuffled, negate_mask, bi->element_count, output);
+
+    } else if(bi->conversion_routine == SSE4Digits) {
+
+      sse::convert_4digits_signed(
+        shuffled, negate_mask, bi->element_count, output);
+
+    } else if(bi->conversion_routine == SSE8Digits) {
+
+      sse::convert_8digits_signed(
+        shuffled, negate_mask, bi->element_count, output);
+
+    } else {
+
+      printf("case %04x not handled yet\n", span_mask);
+      assert(false);
+    }
+
+    data += bi.total_skip;
+
+    span_mask64 >>= bi.total_skip;
+    sign_mask64 >>= bi.total_skip;
+  }
+
+  return NULL;
+}
+#else
+
+inline static const char*
+parse_matrix_chunk(void* userdata, const char** data, const char* end) {
+  const char* err = NULL;
+  while(*data + 16 < end) {
+    *data = process_chunk(userdata, *data, end, &err);
+    if(err)
+      return err;
+  }
+  return err;
+}
+#endif
+
 const char*
 simdimacs_parse(FILE* f, void* userdata) {
   sse_init();
@@ -629,6 +822,17 @@ simdimacs_parse(FILE* f, void* userdata) {
   const char* end = NULL;
   const char* err = NULL;
 
+#ifdef AVX512
+  uint8_t classes_lookup[128];
+
+  prepare_lookup("\n ", classes_lookup);
+
+  const __m512i class_lo =
+    _mm512_loadu_si512(reinterpret_cast<__m512i*>(&classes_lookup[0]));
+  const __m512i class_hi =
+    _mm512_loadu_si512(reinterpret_cast<__m512i*>(&classes_lookup[64]));
+#endif
+
   bool header_unparsed = true;
 
   bool eof = false;
@@ -642,11 +846,18 @@ simdimacs_parse(FILE* f, void* userdata) {
       header_unparsed = false;
     }
 
-    while(data + 16 < end) {
-      data = process_chunk(userdata, data, end, &err);
-      if(err)
-        return err;
-    }
+    err = parse_matrix_chunk(userdata,
+                             &data,
+                             end
+#ifdef AVX512
+                             ,
+                             classes_lookup,
+                             __m512i class_lo,
+                             __m512i class_hi
+#endif
+    );
+    if(err)
+      return err;
   }
 
   // Tail processing
