@@ -665,7 +665,12 @@ next_read_step(char* buf,
   return step + 1;
 }
 
+#if __has_builtin(_mm512_movepi8_mask) && \
+  __has_builtin(_mm512_permutex2var_epi8)
+// This is the most powerful parser. Sadly, only a few CPUs have this
+// instruction set extension available - limiting the parser to SSE.
 #define AVX512
+#endif
 
 #ifdef AVX512
 enum lookup {
@@ -721,12 +726,13 @@ inline static const char*
 parse_matrix_chunk(void* userdata,
                    const char** data,
                    const char* end,
-                   const __m512i *class_lo,
-                   const __m512i *class_hi) {
+                   const __m512i* class_lo,
+                   const __m512i* class_hi) {
   while(*data + 64 < end) {
     const __m512i input = _mm512_loadu_si512((__m512i*)(*data));
 
-    const __m512i classes = _mm512_permutex2var_epi8(*class_lo, input, *class_hi);
+    const __m512i classes =
+      _mm512_permutex2var_epi8(*class_lo, input, *class_hi);
 
     if(_mm512_test_epi8_mask(classes, classes) != (uint64_t)-1) {
       return "invalid character";
