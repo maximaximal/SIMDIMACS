@@ -1,10 +1,13 @@
 #include <assert.h>
 #include <ctype.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "simdimacs-internal.h"
 #include "simdimacs.h"
@@ -383,7 +386,10 @@ static __m128i separator_set;
                  _SIDD_UBYTE_OPS | _SIDD_CMP_EQUAL_ANY | _SIDD_UNIT_MASK))
 
 static const char*
-process_chunk(void* userdata, const char* data, const char* end, char** error) {
+process_chunk(void* userdata,
+              const char* data,
+              const char* end,
+              const char** error) {
   assert(end - data >= 16);
 
   // Load a chunk into memory
@@ -422,44 +428,55 @@ sse_init() {
   separator_set = _mm_loadu_si128((__m128i*)" \n                          ");
 }
 
+#define NEXT_C  \
+  ++*c;         \
+  if(*c == end) \
+  return "end of file reached early"
+
 static const char*
-parse_header(FILE* f, void* userdata) {
-  if(fgetc(f) != 'p')
+parse_header(const char** c, const char* end, void* userdata) {
+  if(**c != 'p')
     return "first char not 'p'";
-  if(fgetc(f) != ' ')
+  NEXT_C;
+  if(**c != ' ')
     return "second char not ' '";
-  if(fgetc(f) != 'c')
+  NEXT_C;
+  if(**c != 'c')
     return "third char not 'c'";
-  if(fgetc(f) != 'n')
+  NEXT_C;
+  if(**c != 'n')
     return "fourth char not 'n'";
-  if(fgetc(f) != 'f')
+  NEXT_C;
+  if(**c != 'f')
     return "fifth char not 'f'";
-  if(fgetc(f) != ' ')
+  NEXT_C;
+  if(**c != ' ')
     return "sixth char not ' '";
+  NEXT_C;
 
   uint32_t variables = 0;
   uint32_t clauses = 0;
 
-  char c = fgetc(f);
-  if(!(c >= '0' && c <= '9'))
+  if(!(**c >= '0' && **c <= '9'))
     return "no digit encountered for first char of variables in problem line";
-  while(c >= '0' && c <= '9') {
-    mul10_add_digit(&variables, c);
-    c = fgetc(f);
+  while(**c >= '0' && **c <= '9') {
+    mul10_add_digit(&variables, **c);
+    NEXT_C;
   }
 
-  if(c != ' ')
+  if(**c != ' ')
     return "variables and claues must be separated by ' ' in problem line";
 
-  c = fgetc(f);
-  if(!(c >= '0' && c <= '9'))
+  NEXT_C;
+
+  if(!(**c >= '0' && **c <= '9'))
     return "no digit encountered for first char of clauses in problem line";
-  while(c >= '0' && c <= '9') {
-    mul10_add_digit(&clauses, c);
-    c = fgetc(f);
+  while(**c >= '0' && **c <= '9') {
+    mul10_add_digit(&clauses, **c);
+    NEXT_C;
   }
 
-  if(c != '\n')
+  if(**c != '\n')
     return "problem line must end with a '\n'";
 
   if(variables > INT_MAX)
@@ -582,7 +599,11 @@ next_read_step(char* buf,
     // There was some data left! Copy this in front of the read data. The buffer
     // is large enough for this.
     size_t tail_len = *end - *data;
-    memcpy(tgt - tail_len, *data, tail_len);
+
+    // Only required half of the time!
+    if(tgt - tail_len != *data) {
+      memcpy(tgt - tail_len, *data, tail_len);
+    }
     *data = tgt - tail_len;
   } else {
     *data = tgt;
@@ -595,10 +616,6 @@ const char*
 simdimacs_parse(FILE* f, void* userdata) {
   sse_init();
 
-  const char* err = NULL;
-  if((err = parse_header(f, userdata)))
-    return err;
-
   /*
     Memory Layout: Two buffer areas, one is used to actively read into, while
     the other is read from by the DIMACS parser.
@@ -610,16 +627,25 @@ simdimacs_parse(FILE* f, void* userdata) {
 
   const char* data = NULL;
   const char* end = NULL;
+  const char* err = NULL;
+
+  bool header_unparsed = true;
 
   bool eof = false;
   while(!eof) {
     step = next_read_step(buf, f, step, &data, &end, &eof);
 
+    if(header_unparsed) {
+      if((err = parse_header(&data, end, userdata))) {
+        return err;
+      }
+      header_unparsed = false;
+    }
+
     while(data + 16 < end) {
-      char* error = NULL;
-      data = process_chunk(userdata, data, end, &error);
-      if(error)
-        return error;
+      data = process_chunk(userdata, data, end, &err);
+      if(err)
+        return err;
     }
   }
 
@@ -632,41 +658,9 @@ simdimacs_parse(FILE* f, void* userdata) {
 }
 
 const char*
-simdimacs_parse_path(const char* path, void*) {
-  sse_init();
-
-  const char* err = NULL;
-  if((err = parse_header(f, userdata)))
-    return err;
-
-  /*
-    Memory Layout: Two buffer areas, one is used to actively read into, while
-    the other is read from by the DIMACS parser.
-   */
-
-  char buf[BUFSIZE] SSE_ALIGN;
-
-  size_t step = 0;
-
-  const char* data = NULL;
-  const char* end = NULL;
-
-  bool eof = false;
-  while(!eof) {
-    step = next_read_step(buf, f, step, &data, &end, &eof);
-
-    while(data + 16 < end) {
-      char* error = NULL;
-      data = process_chunk(userdata, data, end, &error);
-      if(error)
-        return error;
-    }
-  }
-
-  // Tail processing
-  if((err = scalar_parse_signed(userdata, data, end - data))) {
-    return err;
-  }
-
-  return NULL;
+simdimacs_parse_path(const char* path, void* userdata) {
+  FILE* f = fopen(path, "r");
+  const char* err = simdimacs_parse(f, userdata);
+  fclose(f);
+  return err;
 }

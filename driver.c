@@ -1,8 +1,11 @@
+#include <bits/types/struct_timeval.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+
+#include <sys/time.h>
 
 #include "simdimacs.h"
 
@@ -44,6 +47,14 @@ help() {
   printf("  -h\tthis help message\n");
 }
 
+static double
+timeval_to_seconds(struct timeval* t) {
+  double s = t->tv_usec;
+  s *= 1.e-6;
+  s += t->tv_sec;
+  return s;
+}
+
 int
 main(int argc, char* argv[]) {
   int opt;
@@ -69,6 +80,10 @@ main(int argc, char* argv[]) {
   const char* path = argv[optind];
   const char* err = NULL;
 
+  struct timeval start;
+  struct timeval end;
+  gettimeofday(&start, NULL);
+
   if(FILE_based) {
     FILE* file = fopen(path, "r");
     err = simdimacs_parse(file, NULL);
@@ -80,6 +95,14 @@ main(int argc, char* argv[]) {
     fprintf(stderr, "Parse error: %s\n", err);
     return EXIT_FAILURE;
   }
+
+  gettimeofday(&end, NULL);
+
+  double start_s = timeval_to_seconds(&start);
+  double end_s = timeval_to_seconds(&end);
+  double parse_s = end_s - start_s;
+
+  fprintf(stderr, "    %s : parse-time: %f s\n", path, parse_s);
 
   return EXIT_SUCCESS;
 }

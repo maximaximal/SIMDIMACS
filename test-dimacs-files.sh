@@ -10,10 +10,4 @@ for f in $SCRIPT_DIR/test/*.dimacs; do
     else
         echo "! ./driver $f"
     fi
-
-    if ./driver -F "$f" | cmp $f; then
-        echo "  ./driver -F $f"
-    else
-        echo "! ./driver -F $f"
-    fi
 done

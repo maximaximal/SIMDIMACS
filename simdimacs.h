@@ -66,10 +66,6 @@ simdimacs_parse(FILE*, void*);
  *
  * Doesn't use the heap, but allocates 2MB on the stack for the two-part read
  * buffer.
- *
- * This function uses a more advanced asynchronous read method and does manual
- * buffering of the reads. While 1MB data is parsed, the other MB is read into
- * the adjacent memory.
  */
 const char*
 simdimacs_parse_path(const char* path, void*);
