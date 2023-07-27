@@ -665,9 +665,7 @@ next_read_step(char* buf,
   return step + 1;
 }
 
-#if defined(__AVX512__)
 #define AVX512
-#endif
 
 #ifdef AVX512
 enum lookup {
@@ -726,29 +724,29 @@ parse_matrix_chunk(void* userdata,
                    uint8_t* classes_lookup,
                    __m512i class_lo,
                    __m512i class_hi) {
-  const __m512i input = _mm512_loadu_si512(reinterpret_cast<__m512i*>(*data));
+  const __m512i input = _mm512_loadu_si512((__m512i*)(*data));
 
   const __m512i classes = _mm512_permutex2var_epi8(class_lo, input, class_hi);
 
-  if(_mm512_test_epi8_mask(classes, classes) != uint64_t(-1)) {
+  if(_mm512_test_epi8_mask(classes, classes) != (uint64_t)-1) {
     return "invalid character";
   }
 
   uint64_t span_mask64 = _mm512_movepi8_mask(classes);
   uint64_t sign_mask64 =
-    _mm512_test_epi8_mask(classes, _mm512_set1_epi8(int8_t(0x40)));
+    _mm512_test_epi8_mask(classes, _mm512_set1_epi8((int8_t)0x40));
 
-  char* bufend = data + 64;
-  while(data + 16 <= bufend) {
+  const char* bufend = *data + 64;
+  while(*data + 16 <= bufend) {
     const uint16_t span_mask = span_mask64 & 0xffff;
     const uint16_t sign_mask = sign_mask64 & 0xffff;
 
-    const simdimacs_blockinfo* bi = &blocks[span_mask];
+    const simdimacs_blockinfo* bi = &simdimacs_blocks[span_mask];
     if(sign_mask & bi->invalid_sign_mask) {
       return "'+' or '-' at invalid position";
     }
 
-    const __m128i chunk = _mm_loadu_si128(reinterpret_cast<__m128i*>(data));
+    const __m128i chunk = _mm_loadu_si128((__m128i*)(*data));
 
     const __m128i shuffle_digits =
       _mm_loadu_si128((const __m128i*)bi->shuffle_digits);
@@ -759,34 +757,26 @@ parse_matrix_chunk(void* userdata,
     const __m128i negate_mask = _mm_cmpeq_epi8(
       _mm_shuffle_epi8(chunk, shuffle_signs), _mm_set1_epi8('-'));
     if(bi->conversion_routine == SSE1Digit) {
-
-      sse::convert_1digit(shuffled, bi->element_count, output);
-
+      convert_1digit(userdata,shuffled, bi->element_count);
     } else if(bi->conversion_routine == SSE2Digits) {
-
-      sse::convert_2digits_signed(
-        shuffled, negate_mask, bi->element_count, output);
-
+      convert_2digits_signed(userdata,
+        shuffled, negate_mask, bi->element_count);
     } else if(bi->conversion_routine == SSE4Digits) {
-
-      sse::convert_4digits_signed(
-        shuffled, negate_mask, bi->element_count, output);
-
+      convert_4digits_signed(userdata,
+        shuffled, negate_mask, bi->element_count);
     } else if(bi->conversion_routine == SSE8Digits) {
-
-      sse::convert_8digits_signed(
-        shuffled, negate_mask, bi->element_count, output);
-
+      convert_8digits_signed(userdata,
+        shuffled, negate_mask, bi->element_count);
     } else {
 
       printf("case %04x not handled yet\n", span_mask);
       assert(false);
     }
 
-    data += bi.total_skip;
+    *data += bi->total_skip;
 
-    span_mask64 >>= bi.total_skip;
-    sign_mask64 >>= bi.total_skip;
+    span_mask64 >>= bi->total_skip;
+    sign_mask64 >>= bi->total_skip;
   }
 
   return NULL;
@@ -828,9 +818,9 @@ simdimacs_parse(FILE* f, void* userdata) {
   prepare_lookup("\n ", classes_lookup);
 
   const __m512i class_lo =
-    _mm512_loadu_si512(reinterpret_cast<__m512i*>(&classes_lookup[0]));
+    _mm512_loadu_si512((__m512i*)(&classes_lookup[0]));
   const __m512i class_hi =
-    _mm512_loadu_si512(reinterpret_cast<__m512i*>(&classes_lookup[64]));
+    _mm512_loadu_si512((__m512i*)(&classes_lookup[64]));
 #endif
 
   bool header_unparsed = true;
