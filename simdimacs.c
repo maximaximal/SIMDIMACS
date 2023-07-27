@@ -61,17 +61,6 @@ simdimacs_print_stats() {
 
 #define SSE_ALIGN __attribute__((aligned(16)))
 
-static __m128i
-decimal_digits_mask(const __m128i input) {
-  const __m128i ascii0 = _mm_set1_epi8('0');
-  const __m128i after_ascii9 = _mm_set1_epi8('9' + 1);
-
-  const __m128i t0 = _mm_cmplt_epi8(input, ascii0);      // t1 = (x < '0')
-  const __m128i t1 = _mm_cmplt_epi8(input, after_ascii9);// t0 = (x <= '9')
-
-  return _mm_andnot_si128(t0, t1);// x <= '9' and x >= '0'
-}
-
 static inline void
 convert_1digit(void* userdata, const __m128i input, int count) {
   INCSTAT(callsto_convert_1_digit);
@@ -423,6 +412,19 @@ parse_signed(void* userdata,
   return data + bi->total_skip;
 }
 
+#ifndef AVX512
+
+static __m128i
+decimal_digits_mask(const __m128i input) {
+  const __m128i ascii0 = _mm_set1_epi8('0');
+  const __m128i after_ascii9 = _mm_set1_epi8('9' + 1);
+
+  const __m128i t0 = _mm_cmplt_epi8(input, ascii0);      // t1 = (x < '0')
+  const __m128i t1 = _mm_cmplt_epi8(input, after_ascii9);// t0 = (x <= '9')
+
+  return _mm_andnot_si128(t0, t1);// x <= '9' and x >= '0'
+}
+
 // Initiated by sse_init
 static size_t separator_set_size;
 
@@ -480,6 +482,7 @@ sse_init() {
   // All the separators have to be listed, otherwise this is a buffer overflow!
   separator_set = _mm_loadu_si128((__m128i*)" \n                          ");
 }
+#endif
 
 #define NEXT_C  \
   ++*c;         \
@@ -842,8 +845,6 @@ parse_matrix_chunk(void* userdata, const char** data, const char* end) {
 
 const char*
 simdimacs_parse(FILE* f, void* userdata) {
-  sse_init();
-
   /*
     Memory Layout: Two buffer areas, one is used to actively read into, while
     the other is read from by the DIMACS parser.
@@ -864,6 +865,8 @@ simdimacs_parse(FILE* f, void* userdata) {
 
   const __m512i class_lo = _mm512_loadu_si512((__m512i*)(&classes_lookup[0]));
   const __m512i class_hi = _mm512_loadu_si512((__m512i*)(&classes_lookup[64]));
+#else
+  sse_init();
 #endif
 
   bool header_unparsed = true;
