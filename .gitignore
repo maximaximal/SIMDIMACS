@@ -3,3 +3,8 @@ simdimacs-blockinfo.o
 /driver-dbg
 /simdimacs-blockinfo-dbg.o
 /simdimacs.o
+/perf.data
+/perf.data.old
+/driver-avx512
+/compile_commands.json
+/.cache/
