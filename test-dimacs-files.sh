@@ -4,10 +4,18 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 echo "Checking for equality between read and original file for all files in test"
 
+BIN="./driver"
+
+if [[ "$#" -eq 1 ]]; then
+    BIN=$1
+    echo "Using call $BIN to run."
+fi
+
+
 for f in $SCRIPT_DIR/test/*.dimacs; do
-    if ./driver "$f" | cmp $f; then
-        echo "  ./driver $f"
+    if $BIN "$f" | cmp $f; then
+        echo "  $BIN $f"
     else
-        echo "! ./driver $f"
+        echo "! $BIN $f"
     fi
 done

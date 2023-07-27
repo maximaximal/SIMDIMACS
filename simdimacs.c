@@ -623,7 +623,7 @@ scalar_parse_signed(void* userdata, const char* data, size_t size) {
   return NULL;
 }
 
-#define BUFSIZE ((1u << 21) + 16)
+#define BUFSIZE ((1u << 21) + 64)
 
 /* Read the next part. Also sets correct functions and copies old remaining
    data. */
@@ -635,9 +635,9 @@ next_read_step(char* buf,
                const char** end,
                bool* eof) {
   assert(!*eof);
-  assert(*end - *data <= 16);
+  assert(*end - *data <= 64);
 
-  char* tgt = buf + 16;
+  char* tgt = buf + 64;
   if(step % 2 == 0) {
     tgt += (1u << 20);
   }
@@ -767,6 +767,9 @@ parse_matrix_chunk(void* userdata,
       } else if(bi->conversion_routine == SSE2Digits) {
         convert_2digits_signed(
           userdata, shuffled, negate_mask, bi->element_count);
+      } else if(bi->conversion_routine == SSE3Digits) {
+        convert_3digits_signed(
+          userdata, shuffled, negate_mask, bi->element_count);
       } else if(bi->conversion_routine == SSE4Digits) {
         convert_4digits_signed(
           userdata, shuffled, negate_mask, bi->element_count);
@@ -774,9 +777,44 @@ parse_matrix_chunk(void* userdata,
         convert_8digits_signed(
           userdata, shuffled, negate_mask, bi->element_count);
       } else {
+        bool converted = false;
+        uint32_t result;
+        bool negative;
 
-        printf("case %04x not handled yet\n", span_mask);
-        assert(false);
+        *data += bi->first_skip;
+
+        if(**data == '-') {
+          data++;
+          negative = true;
+          result = 0;
+        } else {
+          result = **data++ - '0';
+          negative = false;
+          converted = true;
+        }
+
+        while(*data < end && **data >= '0' && **data <= '9') {
+          mul10_add_digit(&result, **data);
+          *data += 1;
+          converted = true;
+        }
+
+        if(converted) {
+          if(negative) {
+            const int64_t tmp = INT_MAX;
+            const uint32_t absmin = -tmp;
+            if(result > absmin) {
+              exit(1);
+            }
+            SIMDIMACS_ADD(userdata, -result);
+          } else {
+            const uint32_t max = INT_MAX;
+            if(result > max) {
+              exit(1);
+            }
+            SIMDIMACS_ADD(userdata, result);
+          }
+        }
       }
 
       *data += bi->total_skip;

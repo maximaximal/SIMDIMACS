@@ -1,9 +1,12 @@
 CFLAGS ?= -mavx -g -Wall -Wextra -pedantic -mtune=native -march=native -DSIMDIMACS_STATS
 
-all: driver driver-dbg
+all: driver driver-dbg driver-avx512
 
 driver: Makefile driver.c simdimacs.c simdimacs.h simdimacs-blockinfo.o
 	$(CC) $(CFLAGS) -O3 driver.c simdimacs.c simdimacs-blockinfo.o -o driver
+
+driver-avx512: Makefile driver.c simdimacs.c simdimacs.h simdimacs-blockinfo.o
+	$(CC) $(CFLAGS) -O3 -mavx512bw -mavx512vbmi -DAVX512 driver.c simdimacs.c simdimacs-blockinfo.o -o driver-avx512
 
 simdimacs-blockinfo.o: Makefile simdimacs-blockinfo.c simdimacs-internal.h simdimacs-blockinfo.inc.c
 	$(CC) $(CFLAGS) -O3 -c simdimacs-blockinfo.c
