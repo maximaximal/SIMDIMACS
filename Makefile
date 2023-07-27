@@ -1,4 +1,4 @@
-CFLAGS ?= -g -Wall -Wextra -pedantic -march=native -DSIMDIMACS_STATS
+CFLAGS ?= -g -Wall -Wextra -pedantic -mtune=native -march=native -DSIMDIMACS_STATS
 
 all: driver driver-dbg
 

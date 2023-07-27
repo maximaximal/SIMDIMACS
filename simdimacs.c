@@ -665,11 +665,11 @@ next_read_step(char* buf,
   return step + 1;
 }
 
-#if __has_builtin(_mm512_permutex2var_epi8)
+#if defined(__AVX512__)
 #define AVX512
 #endif
 
-#if AVX512
+#ifdef AVX512
 enum lookup {
 
   DIGIT = 0x80,
