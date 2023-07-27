@@ -423,6 +423,14 @@ decimal_digits_mask(const __m128i input) {
   const __m128i t1 = _mm_cmplt_epi8(input, after_ascii9);// t0 = (x <= '9')
 
   return _mm_andnot_si128(t0, t1);// x <= '9' and x >= '0'
+
+  /*
+     Different idea from 0x80pl:
+
+  const __m128i t0 = _mm_sub_epi8(input, _mm_set1_epi8(80));
+  return _mm_cmplt_epi8(t0, _mm_set1_epi8(-118));
+
+  */
 }
 
 // Initiated by sse_init
