@@ -458,6 +458,8 @@ process_chunk(void* userdata,
   // Load a chunk into memory
   __m128i input = _mm_loadu_si128((__m128i*)data);
 
+  // TODO: Needs some kind of mask for invalid characters!
+
   const __m128i ascii_minus = _mm_set1_epi8('-');
   const __m128i bytemask_digit = decimal_digits_mask(input);
 
