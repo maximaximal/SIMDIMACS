@@ -44,6 +44,10 @@
 #define SIMDIMACS_PROBLEM simdimacs_problem
 #endif
 
+#define SIMDIMACS_OP_D INT_MAX
+#define SIMDIMACS_OP_A INT_MIN
+#define SIMDIMACS_OP_E (INT_MIN + 1)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -58,6 +62,20 @@ extern "C" {
  */
 const char*
 simdimacs_parse(FILE*, void*);
+
+/** @brief Parse the file into a CNF, using SIMDIMACS_ADD(userdata,
+ *         SIMDIMACS_LIT).
+ *
+ * Returns: NULL on success, error code on failure.
+ *
+ * Doesn't use the heap, but allocates 2MB on the stack for the two-part read
+ * buffer.
+ *
+ * Processes DRAT and LRAT files by representing 'd' with INT_MIN and 'a' as
+ * INT_MAX in calls to SIMDIMACS_ADD. This variant does not process the header.
+ */
+const char*
+simdimacs_parse_lrat_or_drat(FILE*, void*);
 
 /** @brief Parse the file into a CNF, using SIMDIMACS_ADD(userdata,
  *         SIMDIMACS_LIT).

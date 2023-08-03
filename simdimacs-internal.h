@@ -29,33 +29,36 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
 #include <immintrin.h>
 
 typedef enum simdimacs_conversion {
-    Empty,
-    SSE1Digit,
-    SSE2Digits,
-    SSE3Digits,
-    SSE4Digits,
-    SSE8Digits,
-    Scalar
+  Empty = 0,
+  SSE1Digit,
+  SSE2Digits,
+  SSE3Digits,
+  SSE4Digits,
+  SSE8Digits,
+  Scalar
 } simdimacs_conversion;
 
 typedef struct simdimacs_blockinfo {
-    uint8_t     first_skip;
-    uint8_t     total_skip;
-    uint8_t     element_count;
-    simdimacs_conversion  conversion_routine;
-    uint16_t    invalid_sign_mask;
-    uint8_t     shuffle_digits[16];
-    uint8_t     shuffle_signs[16];
+  uint8_t first_skip;
+  uint8_t total_skip;
+  uint8_t element_count;
+  bool trailing_op : 1;
+  simdimacs_conversion conversion_routine : 7;
+  uint16_t invalid_sign_mask;
+  uint8_t shuffle_digits[16];
+  uint8_t shuffle_signs[16];
 
 } simdimacs_blockinfo;
 
-void simdimacs_dump(FILE* file, simdimacs_blockinfo *b);
+void
+simdimacs_dump(FILE* file, simdimacs_blockinfo* b);
 
 extern simdimacs_blockinfo simdimacs_blocks[65536];
 

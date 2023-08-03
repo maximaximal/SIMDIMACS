@@ -12,7 +12,7 @@ if [[ "$#" -eq 1 ]]; then
 fi
 
 
-for f in $SCRIPT_DIR/test/*.dimacs; do
+for f in $SCRIPT_DIR/test/*.dimacs $SCRIPT_DIR/test/*.qdimacs $SCRIPT_DIR/test/*.lrat $SCRIPT_DIR/test/*.drat; do
     if $BIN "$f" | cmp $f; then
         echo "  $BIN $f"
     else

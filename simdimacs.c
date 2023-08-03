@@ -470,7 +470,9 @@ process_chunk(void* userdata,
   const uint16_t sign_mask = _mm_movemask_epi8(bytemask_minus);
 
   simdimacs_blockinfo* bi = &simdimacs_blocks[span_mask];
+
   if(sign_mask & bi->invalid_sign_mask) {
+    printf("%x %x\n", sign_mask, bi->invalid_sign_mask);
     *error = "character '-' at invalid position!";
     return NULL;
   }
@@ -479,18 +481,36 @@ process_chunk(void* userdata,
     return data + 16;
   }
 
+  const char* n = NULL;
+
   if(sign_mask == 0 || bi->conversion_routine == SSE1Digit) {
-    return parse_unsigned(userdata, bi, input, data, end);
+    n = parse_unsigned(userdata, bi, input, data, end);
   } else {
-    return parse_signed(userdata, bi, input, data, end);
+    n = parse_signed(userdata, bi, input, data, end);
   }
+
+  if(bi->trailing_op) {
+    switch(*(n - 2)) {
+      case 'a':
+        SIMDIMACS_ADD(userdata, SIMDIMACS_OP_A);
+        break;
+      case 'e':
+        SIMDIMACS_ADD(userdata, SIMDIMACS_OP_E);
+        break;
+      case 'd':
+        SIMDIMACS_ADD(userdata, SIMDIMACS_OP_D);
+        break;
+    }
+  }
+
+  return n;
 }
 
 static void
 sse_init() {
   separator_set_size = 2;
   // All the separators have to be listed, otherwise this is a buffer overflow!
-  separator_set = _mm_loadu_si128((__m128i*)" \n                          ");
+  separator_set = _mm_loadu_si128((__m128i*)" \nade                       ");
 }
 #endif
 
@@ -558,7 +578,7 @@ parse_header(const char** c, const char* end, void* userdata) {
 static inline const char*
 scalar_parse_signed(void* userdata, const char* data, size_t size) {
 
-  typedef enum state { separator, minus, digit } state;
+  typedef enum state { separator, minus, operator, digit } state;
 
   state s = separator;
   state prev = separator;
@@ -573,6 +593,8 @@ scalar_parse_signed(void* userdata, const char* data, size_t size) {
       s = digit;
     } else if(c == ' ' || c == '\n') {
       s = separator;
+    } else if(c == 'a' || c == 'd' || c == 'e') {
+      s = operator;
     } else {
       return "wrong character (scalar)";
     }
@@ -611,10 +633,26 @@ scalar_parse_signed(void* userdata, const char* data, size_t size) {
 
             SIMDIMACS_ADD(userdata, number);
           }
-        } else if(prev != separator) {
+        } else if(prev != separator && prev != operator) {
           return "Invalid syntax ('-' or '+' not followed by any digit)";
         }
         number = 0;
+        break;
+
+      case operator:
+        switch(c) {
+          case 'a':
+            SIMDIMACS_ADD(userdata, SIMDIMACS_OP_A);
+            break;
+          case 'd':
+            SIMDIMACS_ADD(userdata, SIMDIMACS_OP_D);
+            break;
+          case 'e':
+            SIMDIMACS_ADD(userdata, SIMDIMACS_OP_E);
+            break;
+          default:
+            return "unknown operator";
+        }
         break;
     }
 
@@ -832,6 +870,20 @@ parse_matrix_chunk(void* userdata,
 
       *data += bi->total_skip;
 
+      if(bi->trailing_op) {
+        switch(*(*data - 2)) {
+          case 'a':
+            SIMDIMACS_ADD(userdata, SIMDIMACS_OP_A);
+            break;
+          case 'e':
+            SIMDIMACS_ADD(userdata, SIMDIMACS_OP_E);
+            break;
+          case 'd':
+            SIMDIMACS_ADD(userdata, SIMDIMACS_OP_D);
+            break;
+        }
+      }
+
       span_mask64 >>= bi->total_skip;
       sign_mask64 >>= bi->total_skip;
     }
@@ -914,9 +966,82 @@ simdimacs_parse(FILE* f, void* userdata) {
 }
 
 const char*
+simdimacs_parse_lrat_or_drat(FILE* f, void* userdata) {
+  /*
+    Memory Layout: Two buffer areas, one is used to actively read into, while
+    the other is read from by the DIMACS parser.
+   */
+
+  char buf[BUFSIZE] SSE_ALIGN;
+
+  size_t step = 0;
+
+  const char* data = NULL;
+  const char* end = NULL;
+  const char* err = NULL;
+
+#ifdef AVX512
+  uint8_t classes_lookup[128];
+
+  prepare_lookup("\n ade", classes_lookup);
+
+  const __m512i class_lo = _mm512_loadu_si512((__m512i*)(&classes_lookup[0]));
+  const __m512i class_hi = _mm512_loadu_si512((__m512i*)(&classes_lookup[64]));
+#else
+  sse_init();
+#endif
+
+  bool eof = false;
+  while(!eof) {
+    step = next_read_step(buf, f, step, &data, &end, &eof);
+
+    err = parse_matrix_chunk(userdata,
+                             &data,
+                             end
+#ifdef AVX512
+                             ,
+                             &class_lo,
+                             &class_hi
+#endif
+    );
+    if(err)
+      return err;
+  }
+
+  // Tail processing
+  if((err = scalar_parse_signed(userdata, data, end - data))) {
+    return err;
+  }
+
+  return NULL;
+}
+
+enum simdimacs_parser_variant { LRAT, DRAT, DIMACS };
+
+const char*
 simdimacs_parse_path(const char* path, void* userdata) {
+  size_t path_len = strlen(path);
+  enum simdimacs_parser_variant parser_variant = DIMACS;
+
+  if(path_len > 5 && strcmp(path + path_len - 5, ".lrat") == 0) {
+    parser_variant = LRAT;
+  }
+  if(path_len > 5 && strcmp(path + path_len - 5, ".drat") == 0) {
+    parser_variant = DRAT;
+  }
+
   FILE* f = fopen(path, "r");
-  const char* err = simdimacs_parse(f, userdata);
+  const char* err = NULL;
+  switch(parser_variant) {
+    case DIMACS:
+      err = simdimacs_parse(f, userdata);
+      break;
+    case LRAT:
+    case DRAT:
+      err = simdimacs_parse_lrat_or_drat(f, userdata);
+      break;
+  }
+
   fclose(f);
   return err;
 }

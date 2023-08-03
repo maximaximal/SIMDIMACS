@@ -8,3 +8,4 @@ simdimacs-blockinfo.o
 /driver-avx512
 /compile_commands.json
 /.cache/
+/simdimacs-blockinfo.inc.c

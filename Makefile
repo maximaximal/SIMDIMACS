@@ -11,6 +11,9 @@ driver-avx512: Makefile driver.c simdimacs.c simdimacs.h simdimacs-blockinfo.o
 simdimacs-blockinfo.o: Makefile simdimacs-blockinfo.c simdimacs-internal.h simdimacs-blockinfo.inc.c
 	$(CC) $(CFLAGS) -O3 -c simdimacs-blockinfo.c
 
+simdimacs-blockinfo.inc.c: Makefile $(wildcard lookup-table-computation/*.py)
+	python lookup-table-computation/generator.py simdimacs-blockinfo.inc.c
+
 driver-dbg: Makefile driver.c simdimacs.c simdimacs.h simdimacs-blockinfo-dbg.o
 	$(CC) $(CFLAGS) -fsanitize=address -fsanitize=undefined  driver.c simdimacs.c simdimacs-blockinfo-dbg.o -o driver-dbg
 

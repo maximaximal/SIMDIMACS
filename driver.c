@@ -1,4 +1,5 @@
 #include <bits/types/struct_timeval.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -20,11 +21,20 @@ simdimacs_add(void* userdata, int lit) {
     return;
   static bool first = true;
   if(first) {
-    printf("%d", lit);
     first = false;
   } else {
-    printf(" %d", lit);
+    printf(" ");
   }
+
+  if(lit == SIMDIMACS_OP_D)
+    printf("d");
+  else if(lit == SIMDIMACS_OP_A)
+    printf("a");
+  else if(lit == SIMDIMACS_OP_E)
+    printf("e");
+  else
+    printf("%d", lit);
+
   if(lit == 0) {
     printf("\n");
     first = true;
