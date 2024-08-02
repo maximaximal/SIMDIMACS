@@ -4,17 +4,22 @@ Fast DIMACS parsing using SIMD instructions!
 
 ## SSE
 
+The SSE-based parser works without issues. It quickly to 50% speed-up during
+parsing compared to a very efficient C-based parser (Kissat).
+
 ## AVX512
 
 This mode is only seldomly available. Tested using [Intel's
 SDE](https://www.intel.com/content/www/us/en/developer/articles/tool/software-development-emulator.html).
 
+There are still some issues with this implementation.
+
 ## LRAT and DRAT
 
 The most difficult detail about parsing these proofs is the 'a' and 'd'
-separation on-top of processing numbers. They may be represented using INT_MAX
-and INT_MIN during SIMDIMACS_ADD calls, but they still have to be detected
-efficiently.
+separation on-top of processing numbers. They may be represented using
+`INT_MAX` and `INT_MIN` during `SIMDIMACS_ADD` calls, but they still have to be
+detected efficiently.
 
 Possible digit (d), separator (s), and operator (o) Patterns:
 
